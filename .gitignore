@@ -1,0 +1,10 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/src/.vs/WinUI.Redemption
+/src/WinUI.Redemption/bin/*
+/src/WinUI.Redemption/obj/*
+/src/WinUI.Redemption.Demo/bin/*
+/src/WinUI.Redemption.Demo/obj/*

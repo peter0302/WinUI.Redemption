@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WinUI.Redemption.Demo (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "WinUI.Redemption.Demo (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
