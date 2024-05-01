@@ -51,11 +51,15 @@ namespace WinUI.Redemption
                         return;
                     foreach (var s in style.Setters)
                     {
-                        if (string.IsNullOrEmpty(s.Property) || s.Binding == null)
-                            continue;
+                        if (string.IsNullOrEmpty(s.PropertyName))
+                            throw new ArgumentNullException(nameof(s.PropertyName));
+                        if (s.Binding == null)
+                            throw new ArgumentNullException(nameof(s.Binding));
                         var dp = s.ResolveProperty(fe.GetType());
                         if (dp == null)
-                            continue;
+                            throw new InvalidOperationException(
+                                $"Could not locate {s.PropertyName}Property on {fe.GetType()}; " +
+                                $"did you forget to specify {nameof(s.PropertyOwner)}?");
                         BindingOperations.SetBinding(obj, dp, s.Binding);
                     }
                 }));

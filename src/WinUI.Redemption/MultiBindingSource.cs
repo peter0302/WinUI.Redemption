@@ -13,7 +13,8 @@ namespace WinUI.Redemption
     /// A binding source that is part of a 
     /// <see cref="MultiBinding"/>. A bug/quirk in
     /// WinUI appears to prevent defining <see cref="BindingBase"/>s
-    /// as direct members of a collection in XAML.
+    /// as direct members of a collection in XAML, plus this is more
+    /// friendly to curly brace binding notation.
     /// </summary>
     [ContentProperty(Name = nameof(Binding))]
     public class MultiBindingSource

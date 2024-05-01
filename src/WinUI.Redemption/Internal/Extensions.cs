@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 
 using Microsoft.UI.Xaml;
 
@@ -13,6 +9,9 @@ namespace WinUI.Redemption.Internal
     {
         public static DependencyProperty TryGetDependencyProperty(this Type type, string propertyName)
         {
+            // In WinUI the DP instances of native objects are
+            // exposed as properties rather than fields, I guess
+            // because of COM and stuff.
             var dpProp = type.GetProperty(
                 $"{propertyName}Property",
                 BindingFlags.Static

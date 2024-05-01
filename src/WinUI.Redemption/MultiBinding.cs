@@ -23,7 +23,11 @@ namespace WinUI.Redemption
         /// <summary>
         /// An attached <see cref="DependencyProperty"/> for assigning one or more
         /// <see cref="MultiBinding"/>s to a <see cref="FrameworkElement"/> via a
-        /// <see cref="MultiBindingCollection"/> in XAML.
+        /// <see cref="MultiBindingCollection"/> in XAML. When this is used in a control or
+        /// data template, the best practice is to declare a <see cref="MultiBindingCollection"/> 
+        /// as a resource and assign it to this attached property through
+        /// <c>StaticResource</c>, to reduce the amount of reflection needed
+        /// to resolve target property names.
         /// </summary>
         public static readonly DependencyProperty MultiBindingsProperty = DependencyProperty.RegisterAttached(
             "MultiBindings",
@@ -36,9 +40,19 @@ namespace WinUI.Redemption
                     return;
                 foreach (var mb in mbc)
                 {
-                    var dp = (mb.PropertyOwner ?? fe.GetType()).TryGetDependencyProperty(mb.PropertyName);
+                    if (string.IsNullOrEmpty(mb.PropertyName))
+                        throw new InvalidOperationException(
+                            $"{nameof(mb.PropertyName)} required when instantiating " +
+                            $"a {nameof(MultiBinding)} from XAML.");
+
+                    var dp = mb._resolvedProperty ?? (mb._resolvedProperty = 
+                        (mb.PropertyOwner ?? fe.GetType()).TryGetDependencyProperty(mb.PropertyName));
+
                     if (dp == null)
-                        continue;
+                        throw new InvalidOperationException(
+                            $"Could not locate {mb.PropertyName}Property on {fe.GetType()}; " +
+                            $"did you forget to specify {nameof(mb.PropertyOwner)}?");
+
                     Bind(fe, dp, mb);
                 }
             }));
@@ -66,6 +80,7 @@ namespace WinUI.Redemption
             DependencyProperty targetProperty,
             MultiBinding multiBinding)
         {
+            multiBinding.Validate();
             var mbx = new MultiBindingExpression
             {
                 MultiBinding = multiBinding,
@@ -75,13 +90,13 @@ namespace WinUI.Redemption
             mbx.Apply();
         }
 
-        Collection<MultiBindingSource> _Bindings;
-
         /// <summary>
         /// A collection of <see cref="MultiBindingSource"/> instances.
-        /// This is normally not set directly except when applying
+        /// This is only set directly when applying
         /// a <see cref="MultiBinding"/> in code using
-        /// <see cref="MultiBinding.Bind(FrameworkElement, DependencyProperty, MultiBinding)"/>.
+        /// <see cref="MultiBinding.Bind(FrameworkElement, DependencyProperty, MultiBinding)"/>,
+        /// otherwise in XAML the <see cref="MultiBindingSource"/>s can just
+        /// be added as content to the <see cref="MultiBinding"/>.
         /// </summary>
         public Collection<MultiBindingSource> Bindings
         {
@@ -91,23 +106,33 @@ namespace WinUI.Redemption
 
         /// <summary>
         /// Specifies the name of the target <see cref="DependencyProperty"/>.
-        /// Either this and optionally 
-        /// <see cref="PropertyOwner"/>
-        /// must be populated when assigning in XAML as members of a 
-        /// <see cref="MultiBindingCollection"/>.
+        /// This must be populated when a <see cref="MultiBinding"/> is declared in XAML 
+        /// as a member of a <see cref="MultiBindingCollection"/>. 
+        /// <see cref="PropertyOwner"/> is also required when targeting attached properties 
+        /// or if the <see cref="DependencyProperty"/> isn't actually a member of the
+        /// target type or its ancestors for some other reason.
+        /// Presumably there are more efficient ways of doing this that 
+        /// WinUI doesn't make available to the muggles, so alas we are
+        /// relegated to using reflection. Accordingly, in templates, 
+        /// a <see cref="MultiBindingCollection"/> should be declared as a resource and
+        /// assigned to the target's <see cref="MultiBinding.MultiBindingsProperty"/>
+        /// through <c>StaticResource</c>, which results in having to resolve the
+        /// target <see cref="DependencyProperty"/> only once per template.
         /// </summary>
         public string PropertyName 
         { 
-            get; 
-            set; 
+            get;
+            set;
         }
 
         /// <summary>
         /// In connection with <see cref="PropertyName"/>, used to
         /// unambiguously identify the owner of the target
-        /// <see cref="DependencyProperty"/>. Typically used with
-        /// attached properties since this class does not have 
-        /// access to XAML namespaces.
+        /// <see cref="DependencyProperty"/>. Required for 
+        /// attached properties since <see cref="MultiBinding"/> does not have 
+        /// access to XAML namespaces and so can't resolve the property class,
+        /// or if the <see cref="DependencyProperty"/> instance isn't actually 
+        /// a member of the target type or its ancestors for some other reason.
         /// </summary>
         public Type PropertyOwner
         {
@@ -138,12 +163,33 @@ namespace WinUI.Redemption
             set;
         }
 
-        internal class ProxyCount
+        private class ProxyCount
         {
-            public int Count { get; set; }
+            public int Count 
+            { 
+                get; 
+                set; 
+            }
         }
 
-        internal class MultiBindingProxy
+        private void Validate()
+        {
+            if (_Bindings?.Any() != true)
+                throw new InvalidOperationException($"At least one {nameof(MultiBindingSource)} is required.");
+            if (this.Converter == null)
+                throw new InvalidOperationException($"A {nameof(IMultiValueConverter)} is required.");
+            foreach (var binding in _Bindings)
+            {
+                if (binding.Binding.Mode != BindingMode.OneWay)
+                    throw new InvalidOperationException(
+                        $"Only {nameof(BindingMode.OneWay)} bindings are currently supported.");
+            }
+        }
+
+        private Collection<MultiBindingSource> _Bindings;
+        private DependencyProperty _resolvedProperty;
+
+        private class MultiBindingProxy
         {
             public Binding OriginalBinding
             {
@@ -157,10 +203,10 @@ namespace WinUI.Redemption
                 init;
             }
 
-            public object CurrentValue
+            public int Index
             {
                 get;
-                set;
+                init;
             }
         }
 
@@ -195,6 +241,8 @@ namespace WinUI.Redemption
 
             internal MultiBindingProxy[] Proxies { get; set; }
 
+            internal object[] ProxyValues { get; private set; }
+
             internal void Apply()
             {
                 _isApplying = true;
@@ -206,15 +254,17 @@ namespace WinUI.Redemption
                 }
 
                 this.Proxies = new MultiBindingProxy[this.MultiBinding.Bindings.Count];
+                this.ProxyValues = new object[this.MultiBinding.Bindings.Count];
 
                 for (int i = 0; i < MultiBinding.Bindings.Count; i++)
                 {
+                    var binding = MultiBinding.Bindings.ElementAt(i).Binding;
                     var proxy = new MultiBindingProxy
                     {
-                        OriginalBinding = MultiBinding.Bindings[i].Binding,
+                        OriginalBinding = binding,
                         ProxyProperty = GetProxyProperty(count.Count++),
-                    };
-                    var binding = MultiBinding.Bindings[i].Binding;
+                        Index = i,
+                    };                    
                     BindingOperations.SetBinding(
                         this.Target,
                         proxy.ProxyProperty,
@@ -227,9 +277,11 @@ namespace WinUI.Redemption
                             Path = binding.Path,
                             RelativeSource = binding.RelativeSource,
                             TargetNullValue = binding.TargetNullValue,
-                            UpdateSourceTrigger = binding.UpdateSourceTrigger,
-                            Converter = new MultiBindingProxyConverter(this, proxy),
+                            UpdateSourceTrigger = binding.UpdateSourceTrigger,                            
                             ConverterLanguage = binding.ConverterLanguage,
+
+                            // We'll use the originals from binding later in our own converter
+                            Converter = new MultiBindingProxyConverter(this, proxy),
                             ConverterParameter = null
                         });
                     this.Proxies[i] = proxy;
@@ -248,6 +300,10 @@ namespace WinUI.Redemption
                         Mode = BindingMode.OneWay,
                     });
 
+                // This not only ensures we don't needlessly evaluate until the
+                // target is loaded but also ensures the expression isn't GC'd until
+                // after the FE is unloaded. (Assuming bindings in WinUI are weak refs,
+                // which I don't actually know, but anyway...).
                 this.Target.Loaded += this.OnTargetLoaded;
                 this.Target.Unloaded += this.OnTargetUnloaded;
             }
@@ -257,7 +313,7 @@ namespace WinUI.Redemption
                 if (_isApplying || this.Target?.IsLoaded != true)
                     return;
                 this.FinalValue = this.MultiBinding.Converter.Convert(
-                    this.Proxies.Select(p => p.CurrentValue).ToArray(),
+                    this.ProxyValues,
                     this.MultiBinding.ConverterParameter);
             }
 
@@ -278,13 +334,25 @@ namespace WinUI.Redemption
                 this.Target.Loaded -= this.OnTargetLoaded;
                 this.Target.Unloaded -= this.OnTargetUnloaded;
                 this.Target = null;
-            }
-
-            private static readonly GrowableArray<DependencyProperty> _proxyProps = new GrowableArray<DependencyProperty>(10);
+            }            
 
             private static DependencyProperty GetProxyProperty(int i)
             {
-                lock (_lock)
+                // Each MultiBindingSource uses an attached "proxy" property on the target
+                // to listen for changes to the source. As long as the same target
+                // instance doesn't use the proxy property more than once, 
+                // all of the properties are fungible as we don't actually do anything
+                // with the values; the converter does all the work. This is a big
+                // improvement from my original implementation for XF which 
+                // created new properties for every MulitBinding, which
+                // had to do all the work of resolving the binding sources.
+                // Now the total number of properties needed by the entire application
+                // will never be larger than the largest # of multibinding sources any one
+                // FE instance uses, so it should never grow too big in practice.
+                // The other big advantage is that by attaching the proxy property
+                // directly to the target of the multibinding, we get data context, relative
+                // sources, etc. all for free.
+                lock (_proxyProps)
                 {
                     var dp = _proxyProps[i];
                     if (dp != null)
@@ -293,17 +361,15 @@ namespace WinUI.Redemption
                         $"MBProxy{i}",
                         typeof(object),
                         typeof(MultiBinding),
-                        new PropertyMetadata(null, (sender, e) =>
-                        {
-                        }));
+                        new PropertyMetadata(null));
                     return _proxyProps[i] = dp;
                 }
             }
 
+            private static readonly GrowableArray<DependencyProperty> _proxyProps = 
+                new GrowableArray<DependencyProperty>(10); // not thread safe
             private static ConditionalWeakTable<FrameworkElement, ProxyCount> _proxiesUsed =
-                new ConditionalWeakTable<FrameworkElement, ProxyCount>();
-
-            private static object _lock = new object();
+                new ConditionalWeakTable<FrameworkElement, ProxyCount>();   // already thread safe
 
             private bool _isApplying;
         }
@@ -321,14 +387,13 @@ namespace WinUI.Redemption
                 _expression = expression;
             }
 
+            // This will be called any time this source's value changes
             public object Convert(object value, Type targetType, object parameter, string language)
-            {
-                // This will be called any time the source's value changes
-                // so we need to re-evaluate the whole MB
-
+            {                
                 if (_proxy.OriginalBinding.Converter != null)
                 {
-                    // Use the original binding's converter if there was one
+                    // Now use the original binding's converter and parameter
+                    // if there was one
                     value = _proxy.OriginalBinding.Converter.Convert(
                         value,
                         targetType,
@@ -336,7 +401,7 @@ namespace WinUI.Redemption
                         language);
                 }
 
-                _proxy.CurrentValue = value;
+                _expression.ProxyValues[_proxy.Index] = value;
                 _expression.Reevaluate();
 
                 return value;
@@ -344,6 +409,7 @@ namespace WinUI.Redemption
 
             public object ConvertBack(object value, Type targetType, object parameter, string language)
             {
+                // TODO: TwoWay support
                 throw new NotImplementedException();
             }
         }

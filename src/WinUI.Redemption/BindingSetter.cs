@@ -17,9 +17,11 @@ namespace WinUI.Redemption
         /// The target <see cref="DependencyProperty"/> name, e.g.,
         /// <c>Background</c>. For an attached property, ensure the 
         /// <see cref="PropertyOwner"/> property is set, since this
-        /// class doesn't have access to XAML namespaces.
+        /// class doesn't have access to XAML namespaces. While this
+        /// uses reflection the amount is negligible as the target property
+        /// is cached after resolution.
         /// </summary>
-        public string Property
+        public string PropertyName
         {
             get;
             set;
@@ -50,7 +52,7 @@ namespace WinUI.Redemption
         {
             if (_resolvedProperty != null)
                 return _resolvedProperty;
-            return _resolvedProperty = (PropertyOwner ?? ownerType).TryGetDependencyProperty(this.Property);
+            return _resolvedProperty = (PropertyOwner ?? ownerType).TryGetDependencyProperty(this.PropertyName);
         }
 
         DependencyProperty _resolvedProperty;

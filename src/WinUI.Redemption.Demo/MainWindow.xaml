@@ -9,6 +9,7 @@
         mc:Ignorable="d">
 
     <StackPanel Spacing="5"
+                x:Name="_main"
                 HorizontalAlignment="Center">
         <StackPanel.DataContext>
             <local:ViewModel />
@@ -20,6 +21,27 @@
         </TextBlock>
 
         <Grid HorizontalAlignment="Center">
+            <Grid.Resources>
+                <!-- It doesn't really matter here but in a control or data template 
+                     this cuts down on the amount of reflection needed to resolve
+                     PropertyName to an actual DP. -->
+                <wr:MultiBindingCollection x:Key="All_MultiBindings">
+                    <wr:MultiBinding Converter="{StaticResource AllMustBeTrueMultiConverter}"
+                                     PropertyName="IsChecked">
+                        <wr:MultiBindingSource Binding="{Binding Option1}" />
+                        <wr:MultiBindingSource Binding="{Binding Option2}" />
+                        <wr:MultiBindingSource Binding="{Binding Option3}" />
+                    </wr:MultiBinding>
+                </wr:MultiBindingCollection>
+                <wr:MultiBindingCollection x:Key="Any_MultiBindings">
+                    <wr:MultiBinding Converter="{StaticResource AnyMustBeTrueMultiConverter}"
+                                     PropertyName="IsChecked">
+                        <wr:MultiBindingSource Binding="{Binding Option1}" />
+                        <wr:MultiBindingSource Binding="{Binding Option2}" />
+                        <wr:MultiBindingSource Binding="{Binding Option3}" />
+                    </wr:MultiBinding>
+                </wr:MultiBindingCollection>
+            </Grid.Resources>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -42,33 +64,13 @@
             <CheckBox Grid.Column="0"
                       Grid.Row="1"
                       IsEnabled="False"
-                      Content="All Are True">
-                <wr:MultiBinding.MultiBindings>
-                    <wr:MultiBindingCollection>
-                        <wr:MultiBinding Converter="{StaticResource AllMustBeTrueMultiConverter}"
-                                         PropertyName="IsChecked">
-                            <wr:MultiBindingSource Binding="{Binding Option1}" />
-                            <wr:MultiBindingSource Binding="{Binding Option2}" />
-                            <wr:MultiBindingSource Binding="{Binding Option3}" />
-                        </wr:MultiBinding>
-                    </wr:MultiBindingCollection>
-                </wr:MultiBinding.MultiBindings>
-            </CheckBox>
+                      Content="All Are True"
+                      wr:MultiBinding.MultiBindings="{StaticResource All_MultiBindings}" />
             <CheckBox Grid.Column="1"
                       Grid.Row="1"
                       IsEnabled="False"
-                      Content="Any Are True">
-                <wr:MultiBinding.MultiBindings>
-                    <wr:MultiBindingCollection>
-                        <wr:MultiBinding Converter="{StaticResource AnyMustBeTrueMultiConverter}"
-                                         PropertyName="IsChecked">
-                            <wr:MultiBindingSource Binding="{Binding Option1}" />
-                            <wr:MultiBindingSource Binding="{Binding Option2}" />
-                            <wr:MultiBindingSource Binding="{Binding Option3}" />
-                        </wr:MultiBinding>
-                    </wr:MultiBindingCollection>
-                </wr:MultiBinding.MultiBindings>
-            </CheckBox>
+                      Content="Any Are True"
+                      wr:MultiBinding.MultiBindings="{StaticResource Any_MultiBindings}" />
         </Grid>
 
         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}"
@@ -83,7 +85,7 @@
                     <Setter Property="wr:BindingStyle.Style">
                         <Setter.Value>
                             <wr:BindingStyle>
-                                <wr:BindingSetter Property="Content"
+                                <wr:BindingSetter PropertyName="Content"
                                                   Binding="{Binding RelativeSource={RelativeSource Mode=Self}, Path=Command.Name}" />
                             </wr:BindingStyle>
                         </Setter.Value>
@@ -95,6 +97,6 @@
             <Button Command="{Binding SecondCommand}" />
 
         </StackPanel>
-        
+
     </StackPanel>
 </Window>
